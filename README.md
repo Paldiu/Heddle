@@ -15,18 +15,6 @@ Heddle.fromLines(Path.of("records.csv"))
 
 ---
 
-## Why
-
-Project Reactor solves the "don't block the event loop" problem by turning every operation into a callback. The model is powerful but imposes a cognitive cost: you can't use normal Java control flow, checked exceptions are awkward, and stack traces are nearly unreadable.
-
-Loom makes that trade-off unnecessary. Virtual threads are cheap enough to block; parking one unmounts its carrier thread, returning it to the pool. Heddle takes this at face value:
-
-- Every stage runs on its own virtual thread.
-- Stages hand items to the next stage through a bounded `ArrayBlockingQueue`. If the consumer is slow, the producer parks. If the consumer is fast, it parks waiting for the next item.
-- User code is ordinary Java: `try/catch`, loops, JDBC calls, whatever.
-
----
-
 ## Requirements
 
 - JDK 25 or later
@@ -294,7 +282,7 @@ pipeline.map(this::decryptPayload)
 ## How it works
 
 ```
-Source VT ──→ [HeddleChannel] ──→ Stage-1 VT ──→ [HeddleChannel] ──→ … ──→ Sink VT
+Source VT → [HeddleChannel] → Stage-1 VT → [HeddleChannel] → … → Sink VT
 ```
 
 Each arrow is a bounded `ArrayBlockingQueue`. Virtual threads block on `put()` and `take()`; the JVM unmounts them from their carrier thread while parked, so 10 000 in-flight items occupy 10 000 virtual threads but only a handful of platform threads. No reactive operators, no schedulers, no callbacks.
