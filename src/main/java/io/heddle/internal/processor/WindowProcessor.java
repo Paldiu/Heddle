@@ -3,6 +3,7 @@ package io.heddle.internal.processor;
 import io.heddle.api.Describable;
 import io.heddle.api.Owned;
 import io.heddle.api.StageContext;
+import io.heddle.concurrent.HeddleWheelTimer;
 import io.heddle.internal.transformer.StatefulTransformer;
 
 import java.time.Duration;
@@ -11,13 +12,19 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Collects items into time-bounded windows of type {@code List<T>}. A companion
- * virtual thread signals a flush every {@code duration}; the stage thread checks
- * the signal before processing each item and drains the current buffer when set.
+ * Collects items into time-bounded windows of type {@code List<T>}. The
+ * {@link HeddleWheelTimer} sets a flush flag every {@code duration}; the stage
+ * thread checks the flag before processing each item and drains the current
+ * buffer when set.
  *
- * <p>The timer thread is started lazily on the first item and interrupted when
+ * <p>The timer handle is acquired lazily on the first item and cancelled when
  * upstream completes. A partial window accumulated after the last timer tick is
  * flushed by {@link #flush}.
+ *
+ * <p>Compared to the former companion-VT design (which used {@link Thread#sleep}
+ * in a separate virtual thread), this implementation routes all tick signals
+ * through the shared {@link HeddleWheelTimer}. No additional virtual threads are
+ * spawned per window stage, eliminating per-VT sleep jitter under Loom.
  *
  * <p>Unlike {@code batch(n)}, windows are time-driven rather than count-driven:
  * a window closes after {@code duration} regardless of how many items it holds.
@@ -25,10 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class WindowProcessor<T> extends StatefulTransformer<T, List<T>> implements Describable {
 
-    private final Duration        duration;
-    private final AtomicBoolean   flushFlag  = new AtomicBoolean(false);
-    private final List<T>         buffer     = new ArrayList<>();
-    private volatile Thread       timerThread;
+    private final Duration     duration;
+    private final AtomicBoolean flushFlag = new AtomicBoolean(false);
+    private final List<T>      buffer    = new ArrayList<>();
+    private volatile HeddleWheelTimer.TimerHandle timerHandle;
 
     public WindowProcessor(Duration duration) {
         if (duration == null || duration.isNegative() || duration.isZero())
@@ -38,29 +45,26 @@ public final class WindowProcessor<T> extends StatefulTransformer<T, List<T>> im
 
     @Override
     public void process(Owned<T> item, StageContext<List<T>> ctx) {
-        if (timerThread == null) {
-            timerThread = Thread.ofVirtual().start(() -> {
-                try {
-                    while (!Thread.currentThread().isInterrupted()) {
-                        Thread.sleep(duration);
-                        flushFlag.set(true);
-                    }
-                } catch (InterruptedException ignored) {}
-            });
+        if (timerHandle == null) {
+            timerHandle = scheduleFlush();
         }
-        if (flushFlag.compareAndSet(true, false) && !buffer.isEmpty()) {
-            ctx.emit(new ArrayList<>(buffer));
-            buffer.clear();
+        if (flushFlag.compareAndSet(true, false)) {
+            timerHandle = scheduleFlush();
+            if (!buffer.isEmpty()) {
+                ctx.emit(new ArrayList<>(buffer));
+                buffer.clear();
+            }
         }
         buffer.add(item.consume());
     }
 
+    private HeddleWheelTimer.TimerHandle scheduleFlush() {
+        return HeddleWheelTimer.INSTANCE.schedule(duration.toMillis(), () -> flushFlag.set(true));
+    }
+
     @Override
     public void flush(StageContext<List<T>> ctx) {
-        if (timerThread != null) {
-            timerThread.interrupt();
-            timerThread = null;
-        }
+        cancelTimer();
         if (!buffer.isEmpty()) {
             ctx.emit(new ArrayList<>(buffer));
             buffer.clear();
@@ -69,12 +73,17 @@ public final class WindowProcessor<T> extends StatefulTransformer<T, List<T>> im
 
     @Override
     public void reset() {
-        if (timerThread != null) {
-            timerThread.interrupt();
-            timerThread = null;
-        }
+        cancelTimer();
         flushFlag.set(false);
         buffer.clear();
+    }
+
+    private void cancelTimer() {
+        HeddleWheelTimer.TimerHandle h = timerHandle;
+        if (h != null) {
+            h.cancel();
+            timerHandle = null;
+        }
     }
 
     @Override

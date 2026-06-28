@@ -64,6 +64,7 @@ public final class MergeProcessor<T> implements Runnable {
                 Transfer<T> token = upstream.take();
                 switch (token) {
                     case Transfer.Complete<?> _ -> { break loop; }
+                    case Transfer.Signal<?, ?> sig -> downstream.emitSignal(sig.payload());
                     case Transfer.Ready<?> r -> {
                         T value = (T) r.value();
                         downstream.emit(value);

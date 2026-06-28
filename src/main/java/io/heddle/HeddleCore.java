@@ -20,8 +20,8 @@ import io.heddle.internal.processor.BufferProcessor;
 import io.heddle.internal.processor.FlatMapProcessor;
 import io.heddle.internal.processor.LimitProcessor;
 
+import io.heddle.concurrent.HeddleWheelTimer;
 import io.heddle.error.ErrorStrategy;
-import io.heddle.memory.MemoryGuard;
 import io.heddle.util.ThreadUtils;
 
 import java.time.Duration;
@@ -84,6 +84,10 @@ public final class HeddleCore {
             List<ErrorStrategy> strategies,
             Sink<?> sink,
             PipelineOptions options) {
+
+        if (options.carrierPoolSize() > 0) {
+            ThreadUtils.applyCarrierPoolSize(options.carrierPoolSize());
+        }
 
         PipelineContext context = new PipelineContext(options);
         int bufSize   = options.bufferSize();
@@ -228,18 +232,10 @@ public final class HeddleCore {
             Runnable sourceStop, Duration deadline) {
 
         Runnable body = () -> {
-            Thread watchdog = null;
+            HeddleWheelTimer.TimerHandle watchdog = null;
             if (deadline != null) {
-                watchdog = Thread.ofVirtual()
-                        .name(prefix + "-watchdog")
-                        .start(() -> {
-                            try {
-                                Thread.sleep(deadline);
-                            } catch (InterruptedException ignored) {
-                                return;
-                            }
-                            context.signalCancellation();
-                        });
+                watchdog = HeddleWheelTimer.INSTANCE.schedule(
+                        deadline.toMillis(), context::signalCancellation);
             }
 
             Thread[] stageThreads = ThreadUtils.createAll(prefix, runnables.toArray(new Runnable[0]));
@@ -250,7 +246,7 @@ public final class HeddleCore {
             ThreadUtils.joinAll(stageThreads);
             context.signalCompletion();
 
-            if (watchdog != null) watchdog.interrupt();
+            if (watchdog != null) watchdog.cancel();
         };
 
         return () -> {

@@ -248,6 +248,17 @@ public final class NativeBuffer implements AutoCloseable {
     // -------------------------------------------------------------------------
 
     /**
+     * Zeroes every byte in this buffer.
+     *
+     * <p>The JDK implements this via {@code Unsafe.setMemory}, which the JIT
+     * vectorises to a {@code memset}-equivalent. Call before returning a borrowed
+     * buffer to a {@link NativeBufferPool}.
+     */
+    public void zero() {
+        segment.fill((byte) 0);
+    }
+
+    /**
      * Releases the off-heap memory backing this buffer.
      *
      * <p>Must be called exactly once on the owning buffer. Calling {@code close()}

@@ -81,7 +81,10 @@ public final class PipelineStage<I, O> implements Runnable {
     public void run() {
         context.registerStage(stageId, Thread.currentThread());
 
-        StageContext<O> stageCtx = value -> downstream.put(new Transfer.Ready<>(value));
+        StageContext<O> stageCtx = new StageContext<>() {
+            @Override public void emit(O value) { downstream.put(new Transfer.Ready<>(value)); }
+            @Override public <U> void emitSignal(U payload) { downstream.put(Transfer.signal(payload)); }
+        };
         long itemIndex = 0;
 
         try {
@@ -93,10 +96,13 @@ public final class PipelineStage<I, O> implements Runnable {
                         userStage.flush(stageCtx);
                         break loop;
                     }
+                    case Transfer.Signal<?, ?> sig -> {
+                        userStage.onSignal(sig.payload(), stageCtx);
+                    }
                     case Transfer.Ready<?> ready -> {
                         @SuppressWarnings("unchecked")
                         I value = (I) ready.value();
-                        if (admissionController != null) admissionController.acquire();
+                        int stripe = admissionController != null ? admissionController.acquire() : -1;
                         try {
                             int totalAttempts = (strategy instanceof ErrorStrategy.Retry r) ? r.max() + 1 : 1;
                             Throwable caught = null;
@@ -134,27 +140,26 @@ public final class PipelineStage<I, O> implements Runnable {
                             }
                             itemIndex++;
                         } finally {
-                            if (admissionController != null) admissionController.release();
+                            if (stripe >= 0) admissionController.release(stripe);
                         }
                     }
                 }
             }
-        } 
+        }
         catch (HeddleException ignored) {} // Victim of pipeline termination; upstream already signaled
         catch (Throwable fatal) {
             context.signalFailure(stageId, fatal); // Internal Heddle error
-        } 
+        }
         finally {
-            Thread.interrupted(); 
+            boolean wasInterrupted = Thread.interrupted();
             forwardCompletion();
+            if (wasInterrupted) Thread.currentThread().interrupt();
         }
     }
 
     private void forwardCompletion() {
         try {
             downstream.put(Transfer.complete());
-        } catch (RuntimeException ignored) {
-            
-        }
+        } catch (RuntimeException ignored) {}
     }
 }

@@ -6,7 +6,7 @@ import io.heddle.context.PipelineContext;
 import io.heddle.context.TerminalState;
 import io.heddle.error.HeddleException;
 
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Egress stage. Consumes {@link Transfer} tokens from the last pipeline channel
@@ -17,6 +17,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * cannot (PipelineStage only drives {@link io.heddle.api.Stage#process} and
  * {@link io.heddle.api.Stage#flush}). Without this adapter {@code FileSink} would
  * never flush/close its writer (S2).
+ *
+ * <p>{@link Transfer.Signal} tokens are silently dropped at the sink boundary.
+ * The sink is the terminal consumer and has no downstream to forward signals to;
+ * if user code needs to react to signals at the sink level, implement a custom
+ * {@link Sink} and wrap it behind a signal-intercepting {@link io.heddle.api.Stage}.
  */
 public final class SinkStage<T> implements Runnable {
 
@@ -24,9 +29,9 @@ public final class SinkStage<T> implements Runnable {
     private final NChannel<Transfer<T>> upstream;
     private final Sink<T> sink;
     private final PipelineContext context;
-    private final AtomicLong itemsProcessed = new AtomicLong();
+    private final LongAdder itemsProcessed = new LongAdder();
 
-    public AtomicLong itemsProcessed() { return itemsProcessed; }
+    public LongAdder itemsProcessed() { return itemsProcessed; }
 
     public SinkStage(
             String stageId,
@@ -51,11 +56,12 @@ public final class SinkStage<T> implements Runnable {
                         if (!context.isRunning()) failed = true;
                         break loop;
                     }
+                    case Transfer.Signal<?, ?> _ -> { /* signals are not forwarded to Sink */ }
                     case Transfer.Ready<?> r -> {
                         @SuppressWarnings("unchecked")
                         T value = (T) r.value();
                         sink.accept(value);
-                        itemsProcessed.incrementAndGet();
+                        itemsProcessed.increment();
                     }
                 }
             }
@@ -65,7 +71,7 @@ public final class SinkStage<T> implements Runnable {
             failed = true;
             context.signalFailure(stageId, userEx);
         } finally {
-            Thread.interrupted();
+            boolean wasInterrupted = Thread.interrupted();
             if (failed) {
                 TerminalState s = context.state();
                 Throwable cause = s instanceof TerminalState.Failed f ? f.cause() : null;
@@ -81,6 +87,7 @@ public final class SinkStage<T> implements Runnable {
                     context.signalFailure(stageId, sinkEx);
                 }
             }
+            if (wasInterrupted) Thread.currentThread().interrupt();
         }
     }
 }

@@ -3,13 +3,22 @@ package io.heddle.internal.processor;
 import io.heddle.api.Describable;
 import io.heddle.api.Owned;
 import io.heddle.api.StageContext;
+import io.heddle.concurrent.HeddleWheelTimer;
 import io.heddle.internal.transformer.StatefulTransformer;
+
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Limits throughput to at most {@code maxPerSecond} items per second using a
  * fixed one-second window. When the per-window budget is exhausted the stage
- * virtual thread parks via {@link Thread#sleep} until the window expires,
- * unmounting the carrier without pinning it.
+ * virtual thread parks via {@link LockSupport#park} until the next allowed
+ * emission time, as determined by {@link HeddleWheelTimer}.
+ *
+ * <p>Unlike the former {@link Thread#sleep} approach, which created one JVM timer
+ * event per virtual thread, all delay signals are routed through the shared
+ * hashed wheel timer running on a single dedicated platform thread. This avoids
+ * the scheduling jitter that occurs under Loom when large numbers of VTs each
+ * independently register sleep events with the JVM timer infrastructure.
  *
  * <p><b>Burst note:</b> the fixed-window model allows up to
  * {@code 2 * maxPerSecond} items across a window boundary (all {@code maxPerSecond}
@@ -32,12 +41,13 @@ public final class ThrottleProcessor<T> extends StatefulTransformer<T, T> implem
     public void process(Owned<T> item, StageContext<T> ctx) {
         long intervalMs = 1000L / maxPerSecond;
         long now = System.currentTimeMillis();
-        if (nextAllowedAt > now) {
-            try {
-                Thread.sleep(nextAllowedAt - now);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        long delay = nextAllowedAt - now;
+        if (delay > 0) {
+            Thread current = Thread.currentThread();
+            HeddleWheelTimer.TimerHandle handle =
+                    HeddleWheelTimer.INSTANCE.schedule(delay, () -> LockSupport.unpark(current));
+            LockSupport.park(this);
+            handle.cancel();
         }
         ctx.emit(item.consume());
         nextAllowedAt = System.currentTimeMillis() + intervalMs;

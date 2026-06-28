@@ -7,14 +7,13 @@ import io.heddle.api.PipelineDefinition;
 import io.heddle.api.Sink;
 import io.heddle.config.MergeStrategy;
 import io.heddle.internal.SourceStage;
+import io.heddle.internal.file.FileSource;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
@@ -360,18 +359,9 @@ public final class Heddle {
     public static Pipeline<String> fromLines(Path path, Charset charset) {
         if (path == null)    throw new NullPointerException("path must not be null");
         if (charset == null) throw new NullPointerException("charset must not be null");
+        FileSource source = new FileSource(path, charset);
         return new Pipeline<>((stageId, downstream, context) ->
-                SourceStage.fromEmitter(stageId, emitter -> {
-                    try (BufferedReader reader = Files.newBufferedReader(path, charset)) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            if (Thread.currentThread().isInterrupted()) break;
-                            emitter.emit(line);
-                        }
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("failed reading " + path, e);
-                    }
-                }, downstream, context),
+                SourceStage.fromEmitter(stageId, source, downstream, context),
                 "File[" + path.getFileName() + "]");
     }
 

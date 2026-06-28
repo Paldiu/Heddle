@@ -7,7 +7,7 @@ import io.heddle.internal.Transfer;
 import io.heddle.policies.BackpressurePolicy;
 
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
@@ -33,7 +33,7 @@ public final class HeddleChannel<T> implements NChannel<Transfer<T>> {
     private final ArrayBlockingQueue<Transfer<T>> queue;
     private final PipelineContext context;
     private final BackpressurePolicy policy;
-    private final AtomicLong droppedCount = new AtomicLong();
+    private final LongAdder droppedCount = new LongAdder();
 
     /** Constructs a channel with the default {@link BackpressurePolicy#BLOCK} policy. */
     public HeddleChannel(int capacity, PipelineContext context) {
@@ -51,7 +51,7 @@ public final class HeddleChannel<T> implements NChannel<Transfer<T>> {
     public void put(Transfer<T> token) {
         context.checkSignal();
         try {
-            if (token instanceof Transfer.Complete<?>) {
+            if (token instanceof Transfer.Complete<?> || token instanceof Transfer.Signal<?, ?>) {
                 queue.put(token);
             } else {
                 policy.apply(token, queue, droppedCount,
@@ -86,6 +86,6 @@ public final class HeddleChannel<T> implements NChannel<Transfer<T>> {
 
     public int size()            { return queue.size(); }
     public boolean isEmpty()     { return queue.isEmpty(); }
-    public long droppedCount()   { return droppedCount.get(); }
+    public long droppedCount()   { return droppedCount.longValue(); }
     public BackpressurePolicy policy() { return policy; }
 }

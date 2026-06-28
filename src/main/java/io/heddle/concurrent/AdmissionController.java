@@ -16,9 +16,18 @@ import java.util.concurrent.TimeUnit;
  * side-effects (database writes, HTTP calls) where unbounded concurrency
  * causes resource exhaustion rather than back-pressure.
  *
+ * <p><b>Striped semaphores.</b> A single {@code Semaphore(N)} serialises all
+ * concurrent acquire/release operations on one AQS {@code state} field, causing
+ * memory-bus contention when many virtual threads compete simultaneously. This
+ * implementation uses {@code N} independent {@code Semaphore(1)} instances so
+ * that each acquire/release CAS operates on a distinct cache line.
+ *
+ * <p>{@link #acquire()} returns the index of the acquired stripe; callers must
+ * pass that index back to {@link #release(int)} to preserve permit symmetry.
+ *
  * <p><b>Lock hierarchy.</b> The lock order in Heddle is:
  * <ol>
- *   <li>{@code AdmissionController} (Semaphore) - outermost; acquired per item.</li>
+ *   <li>{@code AdmissionController} (Semaphore stripes) - outermost; acquired per item.</li>
  *   <li>{@link ChildThreadTracker} (ReentrantLock) - acquired to track/untrack children.</li>
  *   <li>{@link io.heddle.context.PipelineContext} - lock-free (AtomicReference only).</li>
  * </ol>
@@ -30,7 +39,9 @@ public final class AdmissionController {
 
     public static final long DEFAULT_ACQUIRE_TIMEOUT_MS = 30_000;
 
-    private final Semaphore semaphore;
+    private static final long SLOW_PATH_SLICE_NS = 1_000_000L; // 1 ms per stripe poll
+
+    private final Semaphore[] stripes;
     private final long acquireTimeoutMs;
     private final MemoryGuard memoryGuard;
 
@@ -57,31 +68,55 @@ public final class AdmissionController {
     public AdmissionController(int maxConcurrent, long acquireTimeoutMs, MemoryGuard memoryGuard) {
         if (maxConcurrent <= 0)    throw new IllegalArgumentException("maxConcurrent must be positive");
         if (acquireTimeoutMs <= 0) throw new IllegalArgumentException("acquireTimeoutMs must be positive");
-        this.semaphore        = new Semaphore(maxConcurrent);
+        this.stripes          = new Semaphore[maxConcurrent];
+        for (int i = 0; i < maxConcurrent; i++) this.stripes[i] = new Semaphore(1);
         this.acquireTimeoutMs = acquireTimeoutMs;
         this.memoryGuard      = memoryGuard;
     }
 
     /**
-     * Acquire one permit, blocking up to the configured timeout.
+     * Acquires one permit from any available stripe, blocking up to the configured timeout.
+     *
+     * <p>Fast path: one non-blocking scan of all stripes starting from the calling
+     * thread's preferred stripe (derived from thread ID). If a free stripe is found
+     * it is claimed immediately with no blocking.
+     *
+     * <p>Slow path: all stripes are occupied. The method rotates through stripes with
+     * 1 ms {@code tryAcquire} slices; virtual threads unmount their carrier during
+     * each park, so no platform thread is consumed while waiting.
      *
      * <p>If a {@link MemoryGuard} was supplied at construction, this method first
      * waits until heap headroom is above the guard's threshold before competing for
-     * the semaphore permit. The calling virtual thread parks while waiting, releasing
-     * its carrier thread so the JVM and GC can continue unimpeded.
+     * a stripe.
      *
-     * @throws HeddleException if the semaphore timeout expires (possible deadlock),
-     *         or the thread is interrupted while waiting for headroom or the semaphore
+     * @return the index of the acquired stripe; must be passed to {@link #release(int)}
+     * @throws HeddleException if the timeout expires or the thread is interrupted
      */
-    public void acquire() {
+    public int acquire() {
         try {
             if (memoryGuard != null) {
                 memoryGuard.awaitHeadroom();
             }
-            if (!semaphore.tryAcquire(acquireTimeoutMs, TimeUnit.MILLISECONDS)) {
-                throw new HeddleException(
-                        "AdmissionController timed out after " + acquireTimeoutMs +
-                        "ms; stage may be deadlocked or excessively backpressured");
+
+            int base = stripeBase();
+
+            // Fast path: one non-blocking scan
+            for (int i = 0; i < stripes.length; i++) {
+                int idx = (base + i) % stripes.length;
+                if (stripes[idx].tryAcquire()) return idx;
+            }
+
+            // Slow path: rotate with 1 ms slices until deadline
+            long deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(acquireTimeoutMs);
+            while (true) {
+                for (int i = 0; i < stripes.length; i++) {
+                    int idx = (base + i) % stripes.length;
+                    long remainingNs = deadlineNs - System.nanoTime();
+                    if (remainingNs <= 0) throw timeout();
+                    long sliceNs = Math.min(remainingNs, SLOW_PATH_SLICE_NS);
+                    if (stripes[idx].tryAcquire(sliceNs, TimeUnit.NANOSECONDS)) return idx;
+                }
+                if (System.nanoTime() >= deadlineNs) throw timeout();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -89,11 +124,29 @@ public final class AdmissionController {
         }
     }
 
-    public void release() {
-        semaphore.release();
+    /**
+     * Releases the permit held on the given stripe.
+     *
+     * @param stripe the value returned by the matching {@link #acquire()} call
+     */
+    public void release(int stripe) {
+        stripes[stripe].release();
     }
 
     public int availablePermits() {
-        return semaphore.availablePermits();
+        int sum = 0;
+        for (Semaphore s : stripes) sum += s.availablePermits();
+        return sum;
+    }
+
+    private int stripeBase() {
+        int base = (int)(Thread.currentThread().threadId() % stripes.length);
+        return base < 0 ? base + stripes.length : base;
+    }
+
+    private HeddleException timeout() {
+        return new HeddleException(
+                "AdmissionController timed out after " + acquireTimeoutMs +
+                "ms; stage may be deadlocked or excessively backpressured");
     }
 }

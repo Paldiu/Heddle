@@ -52,6 +52,28 @@ public final class ThreadUtils {
     }
 
     /**
+     * Applies a ceiling on the number of OS carrier threads used by the JVM's
+     * virtual-thread scheduler via the system property
+     * {@code jdk.virtualThread.scheduler.parallelism}.
+     *
+     * <p>This is a JVM-wide setting. Call it once, before any virtual thread is
+     * started, to restrict Heddle (and all other VT workloads in the process) to
+     * {@code size} carrier threads. Pass {@code 0} to leave the JVM default
+     * (typically {@code Runtime.getRuntime().availableProcessors()}).
+     *
+     * <p>This method is synchronized to avoid interleaved writes when multiple
+     * pipelines with different {@code carrierPoolSize} values are assembled
+     * concurrently; only the first non-zero call takes effect before VTs start.
+     *
+     * @param size the maximum number of carrier threads; ignored if {@code <= 0}
+     */
+    public static synchronized void applyCarrierPoolSize(int size) {
+        if (size > 0) {
+            System.setProperty("jdk.virtualThread.scheduler.parallelism", String.valueOf(size));
+        }
+    }
+
+    /**
      * Join all threads. If interrupted while waiting, the interrupt is
      * recorded and re-raised after all threads have been joined so that
      * callers see a clean join-all and the flag is never set while we're

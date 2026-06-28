@@ -66,15 +66,15 @@ public final class FlatMapProcessor<I, O> implements Stage<I, O>, Describable {
         AtomicReference<Throwable> childError = new AtomicReference<>();
         String childName = "flatmap-child-" + childIndex.getAndIncrement();
 
-        admission.acquire();
-        
+        int stripe = admission.acquire();
+
         tracker.trackAndStart(childName, () -> {
             try {
                 ctx.emitAll(fn.apply(value));
             } catch (Throwable t) {
                 childError.compareAndSet(null, t);
             } finally {
-                admission.release();
+                admission.release(stripe);
                 tracker.untrack(Thread.currentThread());
             }
         });

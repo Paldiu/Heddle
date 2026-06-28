@@ -27,12 +27,15 @@ import java.util.function.Function;
  *
  * <p><b>Graceful completion:</b> on receiving {@code Transfer.Complete} from upstream,
  * this stage calls {@link ChildThreadTracker#awaitAll()} to drain all in-flight children
- * before forwarding the completion sentinel downstream.
+ * before forwarding the completion sentinel downstream. This guarantees all child
+ * emissions have been fully written to the downstream channel before the sentinel arrives.
  *
- * <p><b>Failure / cancellation (victim path):</b> if a {@link HeddleException} is thrown
- * by a channel operation, the context is already terminal. In-flight children are
- * interrupted via {@link ChildThreadTracker#interruptAll()} and completion is forwarded
- * immediately; children will exit on their next channel op.
+ * <p><b>Failure / cancellation (victim or originator path):</b> children are interrupted
+ * via {@link ChildThreadTracker#interruptAll()} and then drained via
+ * {@link ChildThreadTracker#awaitAll()} before the completion sentinel is forwarded.
+ * The drain step is essential: without it the sentinel can overtake in-flight writes
+ * that children have already started but not yet completed, producing out-of-order
+ * data in the downstream channel.
  */
 public final class ConcurrentFlatMapStage<I, O> implements Runnable {
 
@@ -76,7 +79,10 @@ public final class ConcurrentFlatMapStage<I, O> implements Runnable {
     @Override
     public void run() {
         context.registerStage(stageId, Thread.currentThread());
-        StageContext<O> stageCtx = value -> downstream.put(new Transfer.Ready<>(value));
+        StageContext<O> stageCtx = new StageContext<>() {
+            @Override public void emit(O value) { downstream.put(new Transfer.Ready<>(value)); }
+            @Override public <U> void emitSignal(U payload) { downstream.put(Transfer.signal(payload)); }
+        };
         try {
             while (context.isRunning()) {
                 Transfer<I> transfer = upstream.take();
@@ -86,34 +92,52 @@ public final class ConcurrentFlatMapStage<I, O> implements Runnable {
                     break;
                 }
 
+                if (transfer instanceof Transfer.Signal<?, ?> sig) {
+                    downstream.put(Transfer.signal(sig.payload()));
+                    continue;
+                }
+
                 if (transfer instanceof Transfer.Ready<?> ready) {
                     @SuppressWarnings("unchecked")
                     I value = (I) ready.value();
 
-                    admission.acquire();
+                    int stripe = admission.acquire();
 
                     tracker.trackAndStart(stageId + "-child-" + childIndex.getAndIncrement(), () -> {
                         try {
                             stageCtx.emitAll(fn.apply(value));
                         } catch (HeddleException he) {
-                            // Another stage already signaled failure so we just exit here.
+                            // Distinguish channel-level signals from user-code exceptions:
+                            // if the context is still running, the HeddleException came from
+                            // fn.apply() itself (not from a downstream put reacting to a terminal
+                            // signal), so it must be escalated as a real failure.
+                            if (context.isRunning()) {
+                                context.signalFailure(stageId, he);
+                            }
                         } catch (Throwable t) {
                             context.signalFailure(stageId, t);
                         } finally {
-                            admission.release();
+                            admission.release(stripe);
                             tracker.untrack(Thread.currentThread());
                         }
                     });
                 }
             }
         } catch (HeddleException victim) {
+            // Pipeline already terminal from another stage; stop children and drain
+            // before forwarding the sentinel so no child write can overtake it.
             tracker.interruptAll();
+            tracker.awaitAll();
         } catch (Throwable fatal) {
             context.signalFailure(stageId, fatal);
             tracker.interruptAll();
+            tracker.awaitAll();
         } finally {
-            Thread.interrupted(); 
+            // Record and restore the interrupt flag: Thread.interrupted() must not
+            // silently consume a signal that Loom or the caller may still need.
+            boolean wasInterrupted = Thread.interrupted();
             forwardCompletion();
+            if (wasInterrupted) Thread.currentThread().interrupt();
         }
     }
 

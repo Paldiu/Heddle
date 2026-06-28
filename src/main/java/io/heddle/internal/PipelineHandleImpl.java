@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
@@ -39,7 +39,7 @@ public final class PipelineHandleImpl implements PipelineHandle {
     private final Runnable sourceStop;
     private final List<HeddleChannel<?>> channels;
     private final List<String> stageNames;
-    private final AtomicLong itemsProcessed;
+    private final LongAdder itemsProcessed;
     private final List<PipelineHandle> companions;
 
     private final AtomicBoolean started = new AtomicBoolean();
@@ -55,7 +55,7 @@ public final class PipelineHandleImpl implements PipelineHandle {
             Runnable sourceStop,
             List<HeddleChannel<?>> channels,
             List<String> stageNames,
-            AtomicLong itemsProcessed,
+            LongAdder itemsProcessed,
             List<PipelineHandle> companions) {
         this.supervisorTask  = supervisorTask;
         this.context         = context;
@@ -73,7 +73,7 @@ public final class PipelineHandleImpl implements PipelineHandle {
             String namePrefix,
             Runnable sourceStop) {
         this(supervisorTask, context, namePrefix, sourceStop,
-             Collections.emptyList(), Collections.emptyList(), new AtomicLong(),
+             Collections.emptyList(), Collections.emptyList(), new LongAdder(),
              Collections.emptyList());
     }
 
@@ -181,7 +181,7 @@ public final class PipelineHandleImpl implements PipelineHandle {
                 : Duration.ZERO;
         return new PipelineStats(
                 Collections.unmodifiableList(stageStatsList),
-                itemsProcessed.get(),
+                itemsProcessed.longValue(),
                 elapsed,
                 context.state());
     }

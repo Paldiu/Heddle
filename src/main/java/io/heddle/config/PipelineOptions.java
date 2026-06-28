@@ -26,12 +26,19 @@ import java.time.Duration;
  * @param mergeStrategy the error-propagation policy applied when one upstream in a
  *                      {@link io.heddle.Heddle#merge(io.heddle.Pipeline[])} call fails
  *                      while others are still running; must not be {@code null}
- * @param memoryGuard   an optional heap-headroom gate applied to concurrent stages;
- *                      {@code null} disables memory-pressure backpressure
+ * @param memoryGuard     an optional heap-headroom gate applied to concurrent stages;
+ *                        {@code null} disables memory-pressure backpressure
+ * @param carrierPoolSize the maximum number of OS carrier threads Heddle's virtual
+ *                        thread scheduler may use; {@code 0} means no limit (the JVM
+ *                        default). Set this when Heddle runs inside a game engine or
+ *                        other heavily-threaded host to prevent Heddle's ForkJoinPool
+ *                        from competing with the host's rendering, audio, or physics
+ *                        threads for CPU time.
  * @see io.heddle.Pipeline#withOptions(PipelineOptions)
  */
 public record PipelineOptions(int bufferSize, String threadName, Duration deadline,
-                              MergeStrategy mergeStrategy, MemoryGuard memoryGuard) {
+                              MergeStrategy mergeStrategy, MemoryGuard memoryGuard,
+                              int carrierPoolSize) {
 
     /** The default inter-stage channel capacity. */
     public static final int    DEFAULT_BUFFER_SIZE = 64;
@@ -53,6 +60,8 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
             throw new IllegalArgumentException("threadName must not be blank");
         if (mergeStrategy == null)
             throw new NullPointerException("mergeStrategy must not be null");
+        if (carrierPoolSize < 0)
+            throw new IllegalArgumentException("carrierPoolSize must be non-negative (0 = unlimited)");
     }
 
     /**
@@ -63,7 +72,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return the default pipeline options
      */
     public static PipelineOptions defaults() {
-        return new PipelineOptions(DEFAULT_BUFFER_SIZE, DEFAULT_THREAD_NAME, null, MergeStrategy.FAIL_FAST, null);
+        return new PipelineOptions(DEFAULT_BUFFER_SIZE, DEFAULT_THREAD_NAME, null, MergeStrategy.FAIL_FAST, null, 0);
     }
 
     /**
@@ -74,7 +83,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated buffer size
      * @throws IllegalArgumentException if {@code size} is not positive
      */
-    public PipelineOptions withBufferSize(int size)           { return new PipelineOptions(size, threadName, deadline, mergeStrategy, memoryGuard); }
+    public PipelineOptions withBufferSize(int size)           { return new PipelineOptions(size, threadName, deadline, mergeStrategy, memoryGuard, carrierPoolSize); }
 
     /**
      * Returns a copy of this options instance with the virtual-thread base name set to
@@ -84,7 +93,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated thread name
      * @throws IllegalArgumentException if {@code name} is blank
      */
-    public PipelineOptions withThreadName(String name)        { return new PipelineOptions(bufferSize, name, deadline, mergeStrategy, memoryGuard); }
+    public PipelineOptions withThreadName(String name)        { return new PipelineOptions(bufferSize, name, deadline, mergeStrategy, memoryGuard, carrierPoolSize); }
 
     /**
      * Returns a copy of this options instance with the pipeline deadline set to the
@@ -98,7 +107,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      *          existing deadline
      * @return a new {@code PipelineOptions} with the updated deadline
      */
-    public PipelineOptions withDeadline(Duration d)           { return new PipelineOptions(bufferSize, threadName, d, mergeStrategy, memoryGuard); }
+    public PipelineOptions withDeadline(Duration d)           { return new PipelineOptions(bufferSize, threadName, d, mergeStrategy, memoryGuard, carrierPoolSize); }
 
     /**
      * Returns a copy of this options instance with the merge strategy set to the
@@ -108,7 +117,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated merge strategy
      * @throws NullPointerException if {@code s} is {@code null}
      */
-    public PipelineOptions withMergeStrategy(MergeStrategy s) { return new PipelineOptions(bufferSize, threadName, deadline, s, memoryGuard); }
+    public PipelineOptions withMergeStrategy(MergeStrategy s) { return new PipelineOptions(bufferSize, threadName, deadline, s, memoryGuard, carrierPoolSize); }
 
     /**
      * Returns a copy of this options instance with the heap-headroom gate set to the
@@ -122,5 +131,23 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @param guard the memory guard to apply; {@code null} disables the check
      * @return a new {@code PipelineOptions} with the updated memory guard
      */
-    public PipelineOptions withMemoryGuard(MemoryGuard guard) { return new PipelineOptions(bufferSize, threadName, deadline, mergeStrategy, guard); }
+    public PipelineOptions withMemoryGuard(MemoryGuard guard) { return new PipelineOptions(bufferSize, threadName, deadline, mergeStrategy, guard, carrierPoolSize); }
+
+    /**
+     * Returns a copy of this options instance with the carrier thread pool ceiling set
+     * to the specified size.
+     *
+     * <p>When positive, Heddle creates a bounded {@link java.util.concurrent.ForkJoinPool}
+     * and assigns it as the virtual-thread scheduler for all pipeline threads. This
+     * restricts how many OS threads Heddle may use as carriers, preventing it from
+     * competing with a host application's rendering, audio, or physics threads.
+     *
+     * <p>Pass {@code 0} (the default) to use the JVM's built-in scheduler with no
+     * explicit ceiling.
+     *
+     * @param size the maximum carrier thread count; must be non-negative
+     * @return a new {@code PipelineOptions} with the updated carrier pool size
+     * @throws IllegalArgumentException if {@code size} is negative
+     */
+    public PipelineOptions withCarrierPoolSize(int size) { return new PipelineOptions(bufferSize, threadName, deadline, mergeStrategy, memoryGuard, size); }
 }

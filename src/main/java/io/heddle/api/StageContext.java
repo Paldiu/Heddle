@@ -4,9 +4,9 @@ package io.heddle.api;
  * Emission handle supplied to each pipeline stage during item processing.
  *
  * <p>A {@code StageContext} is the sole mechanism by which a {@link Stage} delivers
- * output items to the next stage in the pipeline. There is no separate release or
- * acknowledgement step: calling {@link #emit(Object)} both delivers the item and
- * signals that it is ready for downstream consumption.
+ * output items and control signals to the next stage in the pipeline. There is no
+ * separate release or acknowledgement step: calling {@link #emit(Object)} both
+ * delivers the item and signals that it is ready for downstream consumption.
  *
  * <p>{@link #emit(Object)} may block when the downstream channel is full. This
  * blocking is the backpressure mechanism: the producing virtual thread parks until
@@ -17,7 +17,6 @@ package io.heddle.api;
  * @see Stage
  * @see io.heddle.policies.BackpressurePolicy
  */
-@FunctionalInterface
 public interface StageContext<O> {
 
     /**
@@ -43,4 +42,17 @@ public interface StageContext<O> {
     default void emitAll(Iterable<? extends O> values) {
         for (O v : values) emit(v);
     }
+
+    /**
+     * Sends an in-band control signal with the given payload downstream.
+     *
+     * <p>Signals bypass the channel's backpressure drop policy; they are always
+     * enqueued regardless of the configured {@link io.heddle.policies.BackpressurePolicy}.
+     * Stages that do not recognise the payload type forward it unchanged via the
+     * default {@link Stage#onSignal} implementation.
+     *
+     * @param <U>     the payload type
+     * @param payload the signal payload
+     */
+    <U> void emitSignal(U payload);
 }

@@ -16,6 +16,7 @@ package io.heddle.api;
  *   <li>one-to-many output (fan-out), as in a flat-map</li>
  *   <li>stateful accumulation between items, such as batching or windowing</li>
  *   <li>a {@link #flush(StageContext)} callback to drain buffered state at end-of-stream</li>
+ *   <li>interception of in-band control signals via {@link #onSignal}</li>
  * </ul>
  *
  * <p>Implementations <em>must not</em> retain a reference to {@code item} after
@@ -82,4 +83,31 @@ public interface Stage<I, O> {
      *            before the pipeline reaches its terminal state
      */
     default void flush(StageContext<O> ctx) {}
+
+    /**
+     * Called when an in-band control signal arrives from upstream.
+     *
+     * <p>The default implementation forwards the payload unchanged via
+     * {@link StageContext#emitSignal}, so signals pass through stateless stages
+     * transparently. Override to intercept specific payload types:
+     *
+     * <pre>{@code
+     * @Override
+     * public <U> void onSignal(U payload, StageContext<List<T>> ctx) {
+     *     if (payload instanceof FlushCommand) {
+     *         ctx.emit(new ArrayList<>(buffer));
+     *         buffer.clear();
+     *     } else {
+     *         ctx.emitSignal(payload);  // forward unrecognised signals
+     *     }
+     * }
+     * }</pre>
+     *
+     * @param <U>     the payload type carried by the signal
+     * @param payload the signal payload
+     * @param ctx     the emission context used to forward items or signals downstream
+     */
+    default <U> void onSignal(U payload, StageContext<O> ctx) {
+        ctx.emitSignal(payload);
+    }
 }

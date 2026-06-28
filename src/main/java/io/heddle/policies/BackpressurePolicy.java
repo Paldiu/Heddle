@@ -3,7 +3,7 @@ package io.heddle.policies;
 import io.heddle.error.HeddleException;
 
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
@@ -61,7 +61,7 @@ public abstract sealed class BackpressurePolicy
     public abstract <T> void apply(
             T token,
             ArrayBlockingQueue<T> queue,
-            AtomicLong dropCounter,
+            LongAdder dropCounter,
             Consumer<RuntimeException> onFull) throws InterruptedException;
 
     /**
@@ -83,7 +83,7 @@ public abstract sealed class BackpressurePolicy
          */
         @Override
         public <T> void apply(T token, ArrayBlockingQueue<T> queue,
-                AtomicLong dropCounter, Consumer<RuntimeException> onFull)
+                LongAdder dropCounter, Consumer<RuntimeException> onFull)
                 throws InterruptedException {
             queue.put(token);
         }
@@ -107,8 +107,8 @@ public abstract sealed class BackpressurePolicy
          */
         @Override
         public <T> void apply(T token, ArrayBlockingQueue<T> queue,
-                AtomicLong dropCounter, Consumer<RuntimeException> onFull) {
-            if (!queue.offer(token)) dropCounter.incrementAndGet();
+                LongAdder dropCounter, Consumer<RuntimeException> onFull) {
+            if (!queue.offer(token)) dropCounter.increment();
         }
     }
 
@@ -130,7 +130,7 @@ public abstract sealed class BackpressurePolicy
          */
         @Override
         public <T> void apply(T token, ArrayBlockingQueue<T> queue,
-                AtomicLong dropCounter, Consumer<RuntimeException> onFull) {
+                LongAdder dropCounter, Consumer<RuntimeException> onFull) {
             if (!queue.offer(token))
                 onFull.accept(new HeddleException("channel full: backpressure policy is FailFast"));
         }
