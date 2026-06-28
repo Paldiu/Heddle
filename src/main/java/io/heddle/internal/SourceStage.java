@@ -14,12 +14,12 @@ import java.util.function.Supplier;
  *
  * <p>Three producer shapes are supported via static factories:
  * <ul>
- *   <li>{@link #fromIterable} — finite, pull-style.</li>
- *   <li>{@link #fromSupplier} — pull-style; returns {@code null} at EOS.</li>
- *   <li>{@link #fromEmitter}  — push-style; producer calls {@code emit()} directly.</li>
+ *   <li>{@link #fromIterable} - finite, pull-style.</li>
+ *   <li>{@link #fromSupplier} - pull-style; returns {@code null} at EOS.</li>
+ *   <li>{@link #fromEmitter}  - push-style; producer calls {@code emit()} directly.</li>
  * </ul>
  *
- * <p>On cancellation/failure the stage exits immediately — channels throw
+ * <p>On cancellation/failure the stage exits immediately; channels throw
  * {@link HeddleException} on every op once the context is terminal.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})

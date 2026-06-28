@@ -6,6 +6,7 @@ import io.heddle.concurrent.AdmissionController;
 import io.heddle.concurrent.ChildThreadTracker;
 import io.heddle.context.PipelineContext;
 import io.heddle.error.HeddleException;
+import io.heddle.memory.MemoryGuard;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -22,7 +23,7 @@ import java.util.function.Function;
  *
  * <p><b>Output ordering:</b> child threads write to downstream concurrently, so outputs
  * from item N may arrive before outputs from item N-1. This is merge (unordered)
- * semantics — the expected contract for async fan-out.
+ * semantics; the expected contract for async fan-out.
  *
  * <p><b>Graceful completion:</b> on receiving {@code Transfer.Complete} from upstream,
  * this stage calls {@link ChildThreadTracker#awaitAll()} to drain all in-flight children
@@ -51,12 +52,24 @@ public final class ConcurrentFlatMapStage<I, O> implements Runnable {
             Function<I, Iterable<O>> fn,
             int concurrency,
             PipelineContext context) {
+        this(stageId, upstream, downstream, fn, concurrency, context, null);
+    }
+
+    public ConcurrentFlatMapStage(
+            String stageId,
+            NChannel<Transfer<I>> upstream,
+            NChannel<Transfer<O>> downstream,
+            Function<I, Iterable<O>> fn,
+            int concurrency,
+            PipelineContext context,
+            MemoryGuard memoryGuard) {
         this.stageId    = stageId;
         this.upstream   = upstream;
         this.downstream = downstream;
         this.fn         = fn;
         this.context    = context;
-        this.admission  = new AdmissionController(concurrency);
+        this.admission  = new AdmissionController(
+                concurrency, AdmissionController.DEFAULT_ACQUIRE_TIMEOUT_MS, memoryGuard);
         this.tracker    = new ChildThreadTracker();
     }
 

@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p><b>Lock hierarchy:</b> ChildThreadTracker (ReentrantLock) sits <em>below</em>
  * {@link AdmissionController} and <em>above</em> PipelineContext (lock-free) in the
  * lock order. Never hold this lock while trying to acquire an AdmissionController
- * permit — that ordering would deadlock against a thread that holds the permit and
+ * permit; that ordering would deadlock against a thread that holds the permit and
  * is waiting to track a child.
  *
  * <p><b>Why {@link ReentrantLock} over {@code synchronized}:</b> {@code synchronized}
@@ -91,7 +91,7 @@ public final class ChildThreadTracker {
      *
      * <p>Takes a snapshot under the lock so concurrent {@link #track}/{@link #untrack}
      * calls cannot deadlock against the join. A child added after the snapshot is not
-     * joined in this call — but that can only happen if the caller is processing the
+     * joined in this call, but that can only happen if the caller is processing the
      * next item before this call returns, which the single-threaded stage model prevents.
      */
     public void awaitAll() {
@@ -119,7 +119,7 @@ public final class ChildThreadTracker {
             if (!lock.tryLock(lockTimeoutMs, TimeUnit.MILLISECONDS)) {
                 throw new HeddleException(
                         "ChildThreadTracker lock timed out after " + lockTimeoutMs +
-                        "ms — possible deadlock in stage child management");
+                        "ms; possible deadlock in stage child management");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

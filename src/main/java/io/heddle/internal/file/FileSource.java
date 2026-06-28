@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  *
  * <p><b>Trust boundary:</b> the caller is responsible for validating that
  * {@code path} is within an expected directory. No path canonicalisation or
- * allow-listing is performed here — a path derived from untrusted input is a
+ * allow-listing is performed here, a path derived from untrusted input is a
  * path-traversal / arbitrary-read vulnerability.
  *
  * <p><b>Sensitive data:</b> lines are emitted as immutable {@code String} values.

@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * Concrete {@link PipelineHandle} produced by {@link io.heddle.HeddleCore}.
  *
  * <p>A single <em>supervisor</em> virtual thread is started on {@link #start()}.
- * The supervisor owns the scope that contains all stage VTs — callers join only the
+ * The supervisor owns the scope that contains all stage VTs; callers join only the
  * supervisor, not N individual threads. This simplifies lifecycle management and
  * ensures the supervisor cannot exit before every stage has finished.
  *

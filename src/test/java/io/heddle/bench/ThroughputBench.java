@@ -19,9 +19,9 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Thread)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
-@Warmup(iterations = 3, time = 1)
-@Measurement(iterations = 5, time = 1)
-@Fork(1)
+@Warmup(iterations = 8, time = 2)
+@Measurement(iterations = 5, time = 2)
+@Fork(value = 1, jvmArgsAppend = {"-XX:+UseZGC", "-XX:+ZGenerational"})
 public class ThroughputBench {
 
     @Param({"1000", "100000"})

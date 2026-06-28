@@ -7,7 +7,7 @@ import io.heddle.api.Owned;
  *
  * <p>In Heddle, ownership transfers through the channel: {@code ArrayBlockingQueue.take()}
  * atomically removes exactly one element, so exactly one consumer ever acquires a given
- * item. This class makes that protocol explicit — {@link #take(Object)} is the single
+ * item. This class makes that protocol explicit, {@link #take(Object)} is the single
  * site where a raw value becomes an {@link Owned} token.
  *
  * <p>The happens-before guarantee is provided by the queue's {@code put/take}

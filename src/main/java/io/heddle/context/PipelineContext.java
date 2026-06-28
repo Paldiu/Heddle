@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Ordering invariant: CAS the terminal state FIRST, then interrupt. Any thread
  * that wakes on an interrupt re-reads the atomic and gets a consistent verdict.
- * {@code Thread.interrupted()} is never used as state — clearing the flag would
+ * {@code Thread.interrupted()} is never used as state; clearing the flag would
  * mislabel a failure as a cancellation.
  *
  * <p>{@link #CURRENT} is a {@link ScopedValue} bound by {@code HeddleCore} on the
@@ -145,7 +145,7 @@ public final class PipelineContext {
 
     /**
      * Called by channels before and after a blocking operation. Reads only the
-     * atomic — never clears the interrupt flag.
+     * atomic; never clears the interrupt flag.
      */
     public void checkSignal() {
         switch (state.get()) {

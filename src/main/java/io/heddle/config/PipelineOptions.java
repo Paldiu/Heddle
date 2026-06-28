@@ -1,5 +1,7 @@
 package io.heddle.config;
 
+import io.heddle.memory.MemoryGuard;
+
 import java.time.Duration;
 
 /**
@@ -24,10 +26,12 @@ import java.time.Duration;
  * @param mergeStrategy the error-propagation policy applied when one upstream in a
  *                      {@link io.heddle.Heddle#merge(io.heddle.Pipeline[])} call fails
  *                      while others are still running; must not be {@code null}
+ * @param memoryGuard   an optional heap-headroom gate applied to concurrent stages;
+ *                      {@code null} disables memory-pressure backpressure
  * @see io.heddle.Pipeline#withOptions(PipelineOptions)
  */
 public record PipelineOptions(int bufferSize, String threadName, Duration deadline,
-                              MergeStrategy mergeStrategy) {
+                              MergeStrategy mergeStrategy, MemoryGuard memoryGuard) {
 
     /** The default inter-stage channel capacity. */
     public static final int    DEFAULT_BUFFER_SIZE = 64;
@@ -59,7 +63,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return the default pipeline options
      */
     public static PipelineOptions defaults() {
-        return new PipelineOptions(DEFAULT_BUFFER_SIZE, DEFAULT_THREAD_NAME, null, MergeStrategy.FAIL_FAST);
+        return new PipelineOptions(DEFAULT_BUFFER_SIZE, DEFAULT_THREAD_NAME, null, MergeStrategy.FAIL_FAST, null);
     }
 
     /**
@@ -70,7 +74,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated buffer size
      * @throws IllegalArgumentException if {@code size} is not positive
      */
-    public PipelineOptions withBufferSize(int size)         { return new PipelineOptions(size, threadName, deadline, mergeStrategy); }
+    public PipelineOptions withBufferSize(int size)           { return new PipelineOptions(size, threadName, deadline, mergeStrategy, memoryGuard); }
 
     /**
      * Returns a copy of this options instance with the virtual-thread base name set to
@@ -80,7 +84,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated thread name
      * @throws IllegalArgumentException if {@code name} is blank
      */
-    public PipelineOptions withThreadName(String name)      { return new PipelineOptions(bufferSize, name, deadline, mergeStrategy); }
+    public PipelineOptions withThreadName(String name)        { return new PipelineOptions(bufferSize, name, deadline, mergeStrategy, memoryGuard); }
 
     /**
      * Returns a copy of this options instance with the pipeline deadline set to the
@@ -94,7 +98,7 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      *          existing deadline
      * @return a new {@code PipelineOptions} with the updated deadline
      */
-    public PipelineOptions withDeadline(Duration d)         { return new PipelineOptions(bufferSize, threadName, d, mergeStrategy); }
+    public PipelineOptions withDeadline(Duration d)           { return new PipelineOptions(bufferSize, threadName, d, mergeStrategy, memoryGuard); }
 
     /**
      * Returns a copy of this options instance with the merge strategy set to the
@@ -104,5 +108,19 @@ public record PipelineOptions(int bufferSize, String threadName, Duration deadli
      * @return a new {@code PipelineOptions} with the updated merge strategy
      * @throws NullPointerException if {@code s} is {@code null}
      */
-    public PipelineOptions withMergeStrategy(MergeStrategy s) { return new PipelineOptions(bufferSize, threadName, deadline, s); }
+    public PipelineOptions withMergeStrategy(MergeStrategy s) { return new PipelineOptions(bufferSize, threadName, deadline, s, memoryGuard); }
+
+    /**
+     * Returns a copy of this options instance with the heap-headroom gate set to the
+     * specified guard.
+     *
+     * <p>When non-null, concurrent stages pause spawning new child virtual threads
+     * whenever free heap drops below the guard's threshold, giving the GC time to
+     * reclaim short-lived objects before new allocation pressure is added.
+     * Pass {@code null} to disable the check (the default).
+     *
+     * @param guard the memory guard to apply; {@code null} disables the check
+     * @return a new {@code PipelineOptions} with the updated memory guard
+     */
+    public PipelineOptions withMemoryGuard(MemoryGuard guard) { return new PipelineOptions(bufferSize, threadName, deadline, mergeStrategy, guard); }
 }

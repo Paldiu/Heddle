@@ -30,7 +30,7 @@ import java.util.function.Function;
  *
  * <p><b>Trust boundary:</b> the caller is responsible for validating that
  * {@code path} is within an expected directory. No path canonicalisation or
- * allow-listing is performed here — arbitrary paths derived from untrusted
+ * allow-listing is performed here, arbitrary paths derived from untrusted
  * input are a path-traversal / arbitrary-write vulnerability.
  */
 public final class FileSink<T> implements Sink<T> {

@@ -15,7 +15,7 @@ import java.util.function.Function;
  * 1:N expansion stage with bounded concurrency.
  *
  * <p>When {@code concurrency == 1} the expansion runs sequentially on the
- * stage thread — no child VTs are created.
+ * stage thread; no child VTs are created.
  *
  * <p>When {@code concurrency > 1} each input item is handed to a child
  * virtual thread that runs {@code fn.apply(item)} and emits all outputs.

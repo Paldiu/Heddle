@@ -17,7 +17,7 @@ import java.util.concurrent.CountDownLatch;
  *
  * <p>Each upstream channel is drained on its own child virtual thread. The stage
  * completes when ALL upstreams have sent {@link Transfer.Complete}. Items from
- * different sources interleave in arrival order — no ordering guarantee across sources.
+ * different sources interleave in arrival order; no ordering guarantee across sources.
  */
 @SuppressWarnings("unchecked")
 public final class MergeProcessor<T> implements Runnable {

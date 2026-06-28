@@ -23,7 +23,7 @@ import io.heddle.api.StageContext;
  * <p>Errors inside the branch are isolated: they fail the branch pipeline but
  * do not propagate to the main pipeline. If the main pipeline is cancelled,
  * {@link io.heddle.internal.PipelineHandleImpl} cancels companion handles —
- * including this branch — as part of the coordinated shutdown.
+ * including this branch, as part of the coordinated shutdown.
  *
  * <p>The branch handle is started by {@link io.heddle.HeddleCore} when the main
  * pipeline starts, before the main supervisor VT, so the branch is always

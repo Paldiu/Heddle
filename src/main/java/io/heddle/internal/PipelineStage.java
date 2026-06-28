@@ -17,10 +17,10 @@ import io.heddle.error.HeddleException;
  * <p>Originator vs. victim distinction:
  * <ul>
  *   <li>If user code throws, this stage is the <em>originator</em>: it applies the
- *       configured {@link ErrorStrategy} — stopping the pipeline, skipping the item,
+ *       configured {@link ErrorStrategy} - stopping the pipeline, skipping the item,
  *       retrying, or routing to a dead-letter sink.</li>
  *   <li>If {@link HeddleException} arrives from a channel operation, another stage
- *       already signaled — this stage is a <em>victim</em> and just unwinds.</li>
+ *       already signaled; this stage is a <em>victim</em> and just unwinds.</li>
  * </ul>
  *
  * <p>An optional {@link AdmissionController} may be supplied to cap the number of

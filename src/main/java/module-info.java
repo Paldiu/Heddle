@@ -27,10 +27,13 @@
 module io.heddle {
     exports io.heddle;
     exports io.heddle.api;
+    exports io.heddle.buffer;
     exports io.heddle.config;
     exports io.heddle.error;
     exports io.heddle.interop;
+    exports io.heddle.memory;
     exports io.heddle.policies;
     exports io.heddle.security;
     exports io.heddle.transaction;
+    exports io.heddle.util;
 }

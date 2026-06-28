@@ -6,7 +6,7 @@ package io.heddle.context;
  * non-terminal one.
  *
  * <p>Always allocate a fresh {@code Running()} as the CAS sentinel stored in
- * {@link PipelineContext} — do not share instances across pipeline runs, since CAS
+ * {@link PipelineContext} - do not share instances across pipeline runs, since CAS
  * uses reference equality.
  */
 public sealed interface TerminalState

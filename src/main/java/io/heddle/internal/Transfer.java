@@ -4,7 +4,7 @@ package io.heddle.internal;
  * In-band data-path marker. {@code Ready} carries a live item; {@code Complete}
  * is the end-of-stream sentinel that drives graceful drain.
  *
- * <p>There is no {@code Failed} variant — failure is exclusively out-of-band via
+ * <p>There is no {@code Failed} variant, failure is exclusively out-of-band via
  * {@link io.heddle.context.PipelineContext#signalFailure}. Routing a failed token
  * down the data path would trap it behind a backed-up buffer, reintroducing the
  * queue drag the out-of-band layer exists to eliminate.

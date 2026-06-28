@@ -21,6 +21,7 @@ import io.heddle.internal.processor.FlatMapProcessor;
 import io.heddle.internal.processor.LimitProcessor;
 
 import io.heddle.error.ErrorStrategy;
+import io.heddle.memory.MemoryGuard;
 import io.heddle.util.ThreadUtils;
 
 import java.time.Duration;
@@ -41,9 +42,9 @@ import java.util.List;
  * {@link PipelineContext#CURRENT} via {@link ScopedValue} before starting any
  * stage, giving two guarantees:
  * <ol>
- *   <li><b>Lifetime containment</b> — the supervisor joins all stage VTs before
+ *   <li><b>Lifetime containment</b>: the supervisor joins all stage VTs before
  *       returning, so callers join only one thread regardless of pipeline width.</li>
- *   <li><b>Scoped-value inheritance</b> — all stage VTs are started inside the
+ *   <li><b>Scoped-value inheritance</b>: all stage VTs are started inside the
  *       supervisor's binding scope and therefore inherit
  *       {@link PipelineContext#CURRENT}, enabling user code to call
  *       {@link PipelineContext#current()} without constructor injection.</li>
@@ -59,7 +60,7 @@ import java.util.List;
  * </pre>
  * N + 1 channels for N stages.
  *
- * <p>Users never call this class directly — entry is through {@link Heddle}
+ * <p>Users never call this class directly: entry is through {@link Heddle}
  * (fluent) or {@link Heddle#wire}/{@link Heddle#run} (annotation-driven).
  */
 @SuppressWarnings("preview")
@@ -126,7 +127,8 @@ public final class HeddleCore {
             }
             if (stage instanceof FlatMapProcessor fmp && fmp.concurrency() > 1) {
                 runnables.add(new ConcurrentFlatMapStage(
-                        prefix + "-stage-" + i, upstream, downstream, fmp.fn(), fmp.concurrency(), context));
+                        prefix + "-stage-" + i, upstream, downstream, fmp.fn(), fmp.concurrency(),
+                        context, options.memoryGuard()));
             } else {
                 runnables.add(new PipelineStage<>(
                         prefix + "-stage-" + i, upstream, downstream, stage, context, null, strategy));
@@ -186,7 +188,8 @@ public final class HeddleCore {
             Stage<?, ?> stage   = stages.get(i);
             if (stage instanceof FlatMapProcessor fmp && fmp.concurrency() > 1) {
                 runnables.add(new ConcurrentFlatMapStage(
-                        prefix + "-stage-" + i, upstream, downstream, fmp.fn(), fmp.concurrency(), context));
+                        prefix + "-stage-" + i, upstream, downstream, fmp.fn(), fmp.concurrency(),
+                        context, options.memoryGuard()));
             } else {
                 runnables.add(new PipelineStage<>(
                         prefix + "-stage-" + i, upstream, downstream, stage, context));

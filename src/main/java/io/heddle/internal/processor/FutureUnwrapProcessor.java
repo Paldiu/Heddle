@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutionException;
  * <p>This stage demonstrates the core Loom value proposition: the virtual thread
  * parks on {@link CompletableFuture#get()} without pinning a carrier thread, so
  * hundreds of in-flight futures can be awaited simultaneously at zero platform-thread
- * cost. No callbacks, no {@code thenApply} chains — just a blocking {@code get()}
+ * cost. No callbacks, no {@code thenApply} chains, just a blocking {@code get()}
  * that reads like synchronous code and performs like async.
  *
  * <p>If the future completed exceptionally the original cause is re-thrown, unwrapped
@@ -36,7 +36,7 @@ public final class FutureUnwrapProcessor<T> implements Stage<CompletableFuture<T
             ctx.emit(future.get());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new HeddleException("future unwrap interrupted — pipeline may be shutting down", e);
+            throw new HeddleException("future unwrap interrupted: pipeline may be shutting down", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (cause instanceof RuntimeException re) throw re;

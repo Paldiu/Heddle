@@ -21,9 +21,9 @@ import java.util.function.Consumer;
  *
  * <p>The {@link BackpressurePolicy} governs what happens when the queue is full:
  * <ul>
- *   <li>{@link BackpressurePolicy.Block} (default) — park until space opens.</li>
- *   <li>{@link BackpressurePolicy.Drop}  — silently discard the item; increment a drop counter.</li>
- *   <li>{@link BackpressurePolicy.FailFast} — signal pipeline failure immediately.</li>
+ *   <li>{@link BackpressurePolicy.Block} (default) - park until space opens.</li>
+ *   <li>{@link BackpressurePolicy.Drop}  - silently discard the item; increment a drop counter.</li>
+ *   <li>{@link BackpressurePolicy.FailFast} - signal pipeline failure immediately.</li>
  * </ul>
  */
 public final class HeddleChannel<T> implements NChannel<Transfer<T>> {

@@ -12,6 +12,7 @@ import io.heddle.internal.processor.*;
 import io.heddle.internal.routing.BroadcastProcessor;
 import io.heddle.interop.HeddleQueue;
 import io.heddle.policies.BackpressurePolicy;
+import io.heddle.util.Hardware;
 
 import java.time.Duration;
 import java.util.*;
@@ -89,21 +90,54 @@ public final class Pipeline<T> {
     }
 
     /**
+     * Transforms each element concurrently, using one virtual thread per physical core.
+     *
+     * <p>Concurrency is set to {@link Hardware#physicalCores()}, which is the correct
+     * upper bound for CPU-bound work. Running more concurrent tasks than physical cores
+     * causes the CPU to context-switch carrier threads, evicting L1/L2 caches and
+     * degrading throughput on compute-heavy functions. For I/O-bound work where carrier
+     * threads park on blocking calls, use {@link #flatMap(Function, int)} instead and
+     * pass a higher concurrency freely.
+     *
+     * @param <R> the output element type
+     * @param fn  the mapping function to apply to each element; must not be {@code null}
+     * @return a new {@code Pipeline} whose elements are the results of applying {@code fn}
+     */
+    public <R> Pipeline<R> mapAsync(Function<? super T, ? extends R> fn) {
+        return mapAsync(fn, Hardware.physicalCores());
+    }
+
+    /**
      * Transforms each element by applying the given function with bounded concurrency.
      *
      * <p>Up to {@code concurrency} elements are processed concurrently by the internal
-     * flat-map stage; results are forwarded downstream as they complete. Useful for
-     * parallelizing I/O-bound transformations without introducing a separate stage.
+     * flat-map stage; results are forwarded downstream as they complete. {@code concurrency}
+     * must not exceed {@link Hardware#physicalCores()} because this operator is for
+     * CPU-bound work. Exceeding the physical core count causes the OS to context-switch
+     * carrier threads, continuously evicting the L1/L2 caches that compute-heavy functions
+     * depend on, which degrades throughput rather than improving it.
+     *
+     * <p>For I/O-bound parallel work (HTTP calls, database queries) use
+     * {@link #flatMap(Function, int)} instead, which has no core-count restriction because
+     * virtual threads park the carrier during blocking I/O rather than spinning on it.
      *
      * @param <R>         the output element type
      * @param fn          the mapping function to apply to each element; must not be
      *                    {@code null}
      * @param concurrency the maximum number of elements processed concurrently;
-     *                    must be positive
+     *                    must be positive and must not exceed {@link Hardware#physicalCores()}
      * @return a new {@code Pipeline} whose elements are the results of applying {@code fn}
      *         with the given concurrency
+     * @throws IllegalArgumentException if {@code concurrency} exceeds
+     *                                  {@link Hardware#physicalCores()}
      */
     public <R> Pipeline<R> mapAsync(Function<? super T, ? extends R> fn, int concurrency) {
+        int cores = Hardware.physicalCores();
+        if (concurrency > cores)
+            throw new IllegalArgumentException(
+                    "mapAsync concurrency " + concurrency + " exceeds physical core count " + cores +
+                    ": oversubscribing cores causes cache thrashing on CPU-bound stages. " +
+                    "Use Hardware.physicalCores() as the upper bound, or flatMap() for I/O-bound work.");
         Function<Object, Iterable<Object>> wrapped =
                 item -> Collections.singletonList(fn.apply((T) item));
         return appendTyped(new FlatMapProcessor<>(wrapped, concurrency));
