@@ -39,9 +39,7 @@ public final class NativeBuffer implements AutoCloseable {
         this.arena   = arena;
     }
 
-    // -------------------------------------------------------------------------
     // Factory methods
-    // -------------------------------------------------------------------------
 
     /**
      * Allocates a new buffer of exactly {@code byteSize} bytes.
@@ -119,9 +117,7 @@ public final class NativeBuffer implements AutoCloseable {
         return buf;
     }
 
-    // -------------------------------------------------------------------------
     // Typed accessors
-    // -------------------------------------------------------------------------
 
     /**
      * Reads the {@code int} at element position {@code index}.
@@ -173,9 +169,7 @@ public final class NativeBuffer implements AutoCloseable {
         segment.set(ValueLayout.JAVA_BYTE, offset, value);
     }
 
-    // -------------------------------------------------------------------------
     // Slicing and info
-    // -------------------------------------------------------------------------
 
     /**
      * Returns a view of a sub-range of this buffer.
@@ -243,9 +237,7 @@ public final class NativeBuffer implements AutoCloseable {
         return segment;
     }
 
-    // -------------------------------------------------------------------------
     // Lifecycle
-    // -------------------------------------------------------------------------
 
     /**
      * Zeroes every byte in this buffer.
